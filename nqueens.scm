@@ -1,50 +1,79 @@
 (use-modules (srfi srfi-1) (ice-9 format))
 
+(define (take-random lst)
+  ;; randomly picks an element of lst
+  (list-ref lst (random (length lst))))
 
-(define (range from to by)
-  (if (>= from to)
-      '()
-      (cons from (range (+ by from) to by))))
+(define (column-conflicts c0 board)
+  ;; returns the number of column conflicts that occur with c element of board
+  (let ([cnt 0]
+	[val (vector-ref board c0)])
+    (do ((i 0 [+ i 1]))
+	((>= i (vector-length board) ))
+      (when (eqv? val (vector-ref board i))
+	(set! cnt (+ 1 cnt))))
+    cnt))
 
-(define (column-conflicts c vec)
-  (count (λ (v) (eqv? (vector-ref vec c) v)) (vector->list vec)))
+(define (any-column-conflicts c0 board)
+  ;; returns #f if there are no c0onflicts with element c0 of board, #t when there are
+  (call/cc  (λ (return) (let ([val (vector-ref board c0)])
+			  (do ((i 0 [+ 1 i]))
+			      ((>= i (vector-length board)))
+			    (let ([el (vector-ref board i)])
+			      (when (and (not (= i c0)) (= val el)) (return #t)))
+			    ) #f))))
 
-(define test1 (make-vector 10 0))
-
-(define (diagonal-conflics c0 vec)
-  (let ((l (vector-length vec))
-        (el (vector-ref vec c0))
+(define (diagonal-conflicts c0 board)
+  ;; returns the number of diagonal conflicts for the position c0 at board
+  (let ((l (vector-length board))
+        (val (vector-ref board c0))
         (cnt 0))
     (do ((i 0 [+ i 1]))
         ((>= i l))
-      (when (= (abs (- el (vector-ref vec i)))
+      (when (= (abs (- val (vector-ref board i)))
                (abs (- c0 i)))
         (set! cnt (+ 1 cnt))))
     cnt))
 
-(define (verify vec)
-  (let ((l (vector-length vec)))
-    (and  (and-map (λ (x) (= 0 (- (column-conflicts x vec) 1))) (range 0 l 1))
-          (and-map (λ (x) (= 0 (- (diagonal-conflics x vec) 1))) (range 0 l 1)))
-    ))
+(define (any-diagonal-conflicts c0 board)
+  ;; returns #f when there are no conflicts for the element c0 of board, #t when there are
+  (call/cc
+   (λ (return)
+     (let ((l (vector-length board))
+           (val (vector-ref board c0)))
+       (do ((i 0 [+ i 1]))
+           ((>= i l))
+	 (when (and (not (= i c0))
+		    (= (abs (- val (vector-ref board i)))
+		       (abs (- c0 i))))
+	   (return #t)))
+       #f))))
 
-(define (sort-error a b)
-  (let ([a-err (cdr a)]
-        [b-err (cdr b)])
-    (cond [(> a-err b-err) #f]
-          [(< a-err b-err) #t]
-          [(= a-err b-err) (if (= 1 (random 2)) #t #f)])))
+(define (total-conflicts c0 board)
+  ;; total conflicts for queen [c] at [board] 
+  (+ (column-conflicts  c0 board)
+     (diagonal-conflicts c0 board)))
 
-(define (minimize-conflicts r vec)
-  (let* ([l (vector-length vec)]
-         [vals (range 0 l 1)]
-         [val (vector-ref vec r)]
-         [error-table (map (λ (c) (cons c (begin
-                                            (vector-set! vec r c)
-                                            (+ (column-conflicts  r vec)
-                                               (diagonal-conflics r vec)))))
-                           vals)])
-    (vector-set! vec r (caar (sort error-table sort-error)))))
+(define (sort-conflict a b)
+  ;; used to compare  elements [a] and [b] of type (number . total-conflicts) based on total conflicts.
+  ;; breaks ties at random
+  (let ([conflict-A (cdr a)]
+        [conflict-B (cdr b)])
+    (cond [(> conflict-A conflict-B) #f]
+          [(< conflict-A conflict-B) #t]
+          [(= conflict-A conflict-B) (if (= 1 (random 2)) #t #f)])))
+
+(define (minimize-conflicts r board)
+  ;; given a queen [r] and a [board], selects a new position that minimizes the column and diagonal conflicts
+  ;; destrutively updates [board]
+  (let* ([l (vector-length board)]
+         [vals (iota l 0 1)]
+         [val (vector-ref board r)]
+         [conflict-table (map (λ (c) (cons c (begin
+                                               (vector-set! board r c)
+                                               (total-conflicts r board ))))
+                              vals)])
+    (vector-set! board r (caar (sort conflict-table sort-conflict)))))
 
 (define (print-board board)
   (define (make-row n  i trgt fill)
@@ -56,20 +85,48 @@
     
     (for-each (λ (r) (format #t "~{~a~_ ~}~%" r)) lst)))
 
+(define (conflict-idx board)
+  ;; returns a list of indices with conflicts for a given [board]
+  (let* ([l (vector-length board)]
+	 [tmp '()])
+    (do ((i 0 [+ 1 i]))
+	((>= i l))
+      (when (or (any-column-conflicts i board)
+		(any-diagonal-conflicts i board))
+	(set! tmp (cons i tmp))))
+    tmp))
+
+
 (define (n-queens max-iter board)
   (let ([prev-state (vector-copy board)]
         [no-change 0]
         [iter 0]
-	[not-done #t])
-    (while (and not-done
-                (> max-iter iter))
-      (set! not-done (not (verify board)))
+	[done #f]
+	[list-of-conflicting-indices '()])
+    ;; populate the list of conflicting element list
+    (set! list-of-conflicting-indices (conflict-idx board))
+
+    ;; set not done
+    (set! done (not (null? list-of-conflicting-indices)))
+
+    ;; first minimization
+    (for-each (λ (e) (minimize-conflicts e board)) list-of-conflicting-indices)
+
+    ;; while the list with conflicting indexes is not empty or max-iters is not reached, minimize rows
+    (while (> max-iter iter)
+      ;; update not-done
+      (set! done (null? list-of-conflicting-indices))
+      ;; break when condition reached
+      (when done (break))
+      ;; inc iterations
       (set! iter (+ 1 iter ))
-      ;; (set! prev-state (cons (vector-copy board) prev-state))
-      (let ([random-number (random (vector-length board))])
-        (minimize-conflicts random-number board)))
-    (values iter prev-state board (not not-done))
-   ))
+      ;; minimize conflicts in a random conflicting row
+      (let ([random-number (take-random list-of-conflicting-indices)])
+	(minimize-conflicts random-number board))
+      ;; recalculate conflicts after change
+      (set! list-of-conflicting-indices (conflict-idx board)))
+    ;;return initial state, iterations, the final state and if the process finished
+    (values iter prev-state board done)))
 
 
 (define (cc-test board )
@@ -79,8 +136,3 @@
 							(print-board solution)
 							(format #t "A solution was ~a after ~a iterations.~%"
 								(if solved "found" "not found") iter))))
-
-
-
-
-
