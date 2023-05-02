@@ -1,11 +1,16 @@
+;; This is my attempt at solving the n-queens problem in guile scheme.                                        ;;
+;; It uses the min-conflict algorithm, but unlike stated by peter norvig, the solution time DOES depend on n. ;;
+;; Maybe something is wrong in my code :)                                                                     ;;
+;; On my old thinkpad it can solve up to 5000-queens before crashing or taking too long.                      ;;
+
 (use-modules (srfi srfi-1) (ice-9 format))
 
 (define (take-random lst)
-  ;; randomly picks an element of lst
+  ;; randomly picks an element of [lst]
   (list-ref lst (random (length lst))))
 
 (define (column-conflicts c0 board)
-  ;; returns the number of column conflicts that occur with c element of board
+  ;; returns the number of column conflicts that occur with [c0] element of [board]
   (let ([cnt 0]
 	[val (vector-ref board c0)])
     (do ((i 0 [+ i 1]))
@@ -15,7 +20,7 @@
     cnt))
 
 (define (any-column-conflicts c0 board)
-  ;; returns #f if there are no c0onflicts with element c0 of board, #t when there are
+  ;; returns #f if there are no conflicts with element [c0] of [board], #t when there are.
   (call/cc  (λ (return) (let ([val (vector-ref board c0)])
 			  (do ((i 0 [+ 1 i]))
 			      ((>= i (vector-length board)))
@@ -24,7 +29,7 @@
 			    ) #f))))
 
 (define (diagonal-conflicts c0 board)
-  ;; returns the number of diagonal conflicts for the position c0 at board
+  ;; returns the number of diagonal conflicts for the position [c0] in [board]
   (let ((l (vector-length board))
         (val (vector-ref board c0))
         (cnt 0))
@@ -36,7 +41,7 @@
     cnt))
 
 (define (any-diagonal-conflicts c0 board)
-  ;; returns #f when there are no conflicts for the element c0 of board, #t when there are
+  ;; returns #f when there are no conflicts for the element [c0] of [board], #t when there are.
   (call/cc
    (λ (return)
      (let ((l (vector-length board))
@@ -56,7 +61,7 @@
 
 (define (sort-conflict a b)
   ;; used to compare  elements [a] and [b] of type (number . total-conflicts) based on total conflicts.
-  ;; breaks ties at random
+  ;; breaks ties at random.
   (let ([conflict-A (cdr a)]
         [conflict-B (cdr b)])
     (cond [(> conflict-A conflict-B) #f]
@@ -76,6 +81,7 @@
     (vector-set! board r (caar (sort conflict-table sort-conflict)))))
 
 (define (print-board board)
+  ;; pretty prints [board]
   (define (make-row n  i trgt fill)
     (let ((row (make-list n fill)))
       (list-set! row i trgt )
@@ -98,6 +104,9 @@
 
 
 (define (n-queens max-iter board)
+  ;; solves the problem given an initial state [board] and a max iteration limit [max-iter].
+  ;; output is in the form of (values iterations initial-state final-state solved?), 
+ 
   (let ([prev-state (vector-copy board)]
         [no-change 0]
         [iter 0]
